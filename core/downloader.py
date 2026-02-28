@@ -5,40 +5,42 @@ import logging
 logger = logging.getLogger(__name__)
 
 async def fetch_media(url: str):
-    # টিকটকের জন্য (আপনার যেটা কাজ করছিল)
+    # স্তর ১: টিকটকের জন্য স্পেশাল এপিআই
     if "tiktok.com" in url:
-        tikwm_url = "https://www.tikwm.com/api/"
         try:
             async with httpx.AsyncClient(timeout=15.0) as client:
-                resp = await client.post(tikwm_url, data={"url": url})
-                data = resp.json()
+                r = await client.post("https://www.tikwm.com/api/", data={"url": url})
+                data = r.json()
                 if data.get("code") == 0:
-                    video = data["data"].get("play") or data["data"].get("hdplay")
-                    return {"url": f"https://www.tikwm.com{video}" if video.startswith("/") else video}
+                    v = data["data"].get("play") or data["data"].get("hdplay")
+                    return {"url": f"https://www.tikwm.com{v}" if v.startswith("/") else v}
         except: pass
 
-    # ফেসবুক, ইন্সটাগ্রাম ও ইউটিউবের জন্য (নতুন ৩টি আলাদা এপিআই ব্যাকআপ)
-    apis = [
-        "https://api.cobalt.tools/",
+    # স্তর ২: ফেসবুক, ইন্সটাগ্রাম ও ইউটিউবের জন্য মাস্টার এপিআই
+    # আমরা এখানে ৩টি ভিন্ন ভিন্ন ইঞ্জিন ট্রাই করবো
+    engines = [
+        "https://api.cobalt.tools/", 
         "https://cobalt-api.v0l.io/",
-        "https://api.tikwm.com/api/render" # ব্যাকআপ
+        "https://co.wuk.sh/api/json"
     ]
     
     payload = {"url": url, "videoQuality": "720", "filenameStyle": "basic"}
     headers = {"Accept": "application/json", "Content-Type": "application/json"}
 
-    for api in apis:
+    for engine in engines:
         try:
-            async with httpx.AsyncClient(timeout=20.0, follow_redirects=True) as client:
-                # যদি ফেসবুক বা ইউটিউব হয়
-                response = await client.post(api, json=payload, headers=headers)
+            async with httpx.AsyncClient(timeout=25.0, follow_redirects=True) as client:
+                response = await client.post(engine, json=payload, headers=headers)
                 if response.status_code == 200:
-                    res = response.json()
-                    if res.get("status") in ["stream", "redirect", "video"]:
-                        return {"url": res.get("url")}
-                    elif res.get("status") == "picker":
-                        return {"url": res["picker"][0].get("url")}
-        except:
+                    res_data = response.json()
+                    # যদি সরাসরি ইউআরএল থাকে
+                    if res_data.get("url"):
+                        return {"url": res_data.get("url")}
+                    # যদি পিকার বা লিস্ট থাকে
+                    elif res_data.get("picker"):
+                        return {"url": res_data["picker"][0].get("url")}
+        except Exception as e:
+            logger.error(f"Engine {engine} failed: {e}")
             continue
             
     return None
