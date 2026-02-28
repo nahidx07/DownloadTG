@@ -14,12 +14,12 @@ from core.downloader import fetch_media
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# বাটন মেনু তৈরি
+# বাটন মেনু
 main_menu = ReplyKeyboardMarkup(
     keyboard=[
         [KeyboardButton(text="Facebook 🔵"), KeyboardButton(text="Instagram 📷")],
         [KeyboardButton(text="TikTok 🎵"), KeyboardButton(text="YouTube 🔴")],
-        [KeyboardButton(text="Trend/Other 🌐")]
+        [KeyboardButton(text="Others 🌐")]
     ],
     resize_keyboard=True
 )
@@ -32,36 +32,33 @@ async def main_process(update_data):
     async def cmd_start(message: types.Message):
         await save_user(message.from_user)
         await message.answer(
-            f"👋 আসসালামু আলাইকুম {message.from_user.first_name}!\nনিচের বাটন থেকে প্ল্যাটফর্ম সিলেক্ট করুন:",
+            f"👋 আসসালামু আলাইকুম {message.from_user.first_name}!\nনিচের বাটন থেকে প্ল্যাটফর্ম সিলেক্ট করুন অথবা সরাসরি লিঙ্ক পাঠান:",
             reply_markup=main_menu
         )
 
-    # বাটন ক্লিকের রেসপন্স
-    @dp.message(F.text.in_(["Facebook 🔵", "Instagram 📷", "TikTok 🎵", "YouTube 🔴", "Trend/Other 🌐"]))
-    async def platform_selected(message: types.Message):
+    @dp.message(F.text.in_(["Facebook 🔵", "Instagram 📷", "TikTok 🎵", "YouTube 🔴", "Others 🌐"]))
+    async def ask_link(message: types.Message):
         platform = message.text.split()[0]
-        await message.answer(f"📥 আপনার {platform} ভিডিও লিঙ্কটি এখানে পাঠান:")
+        await message.answer(f"📥 আপনার {platform} ভিডিও লিঙ্কটি দিন:")
 
-    # লিঙ্ক হ্যান্ডলিং
     @dp.message(F.text.contains("http"))
-    async def handle_links(message: types.Message):
-        status = await message.answer("⚡ ভিডিওটি প্রসেস করা হচ্ছে, দয়া করে অপেক্ষা করুন...")
+    async def handle_download(message: types.Message):
+        status = await message.answer("⚡ ভিডিওটি প্রসেস করা হচ্ছে, কিছুক্ষণ অপেক্ষা করুন...")
         try:
-            # downloader.py থেকে মিডিয়া আনা
-            media = await fetch_media(message.text.strip())
-            
-            if media and media.get('url'):
+            res = await fetch_media(message.text.strip())
+            if res and res.get('url'):
                 try:
-                    await message.reply_video(video=media['url'], caption="✅ ডাউনলোড সম্পন্ন!")
+                    # ভিডিও হিসেবে পাঠানোর চেষ্টা
+                    await message.reply_video(video=res['url'], caption="✅ আপনার ভিডিও প্রস্তুত!")
                 except:
-                    # বড় ফাইল হলে ডকুমেন্ট হিসেবে পাঠানো
-                    await message.reply_document(document=media['url'], caption="✅ বড় ফাইল হিসেবে পাঠানো হলো।")
+                    # ভিডিও ফেইল করলে ফাইল হিসেবে পাঠানো
+                    await message.reply_document(document=res['url'], caption="✅ ফাইল হিসেবে পাঠানো হলো।")
                 await status.delete()
             else:
-                await status.edit_text("❌ দুঃখিত! এই লিঙ্ক থেকে ভিডিও পাওয়া যায়নি। পাবলিক লিঙ্ক দিয়ে আবার চেষ্টা করুন।")
+                await status.edit_text("❌ দুঃখিত! এই লিঙ্ক থেকে ভিডিও পাওয়া যায়নি। দয়া করে পাবলিক লিঙ্ক ব্যবহার করুন।")
         except Exception as e:
             logger.error(f"Error: {e}")
-            await status.edit_text("⚠️ কারিগরি ত্রুটি! লিঙ্কে সমস্যা হতে পারে।")
+            await status.edit_text("⚠️ কারিগরি ত্রুটি! আবার চেষ্টা করুন।")
 
     try:
         update = Update.model_validate(update_data, context={"bot": bot})
@@ -78,11 +75,11 @@ class handler(BaseHTTPRequestHandler):
             asyncio.run(main_process(update_dict))
             self.send_response(200)
             self.end_headers()
-        except Exception as e:
-            logger.error(f"Error: {e}")
+        except:
             self.send_response(200)
             self.end_headers()
 
     def do_GET(self):
         self.send_response(200)
-        self.wfile.write("Bot is Live with Buttons! 🚀".encode())
+        self.end_headers()
+        self.wfile.write("Bot is Finalized! 🚀".encode())
