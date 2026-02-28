@@ -5,53 +5,51 @@ import logging
 logger = logging.getLogger(__name__)
 
 async def fetch_media(url: str):
-    # আমরা Cobalt এর একটি পাবলিক ইনস্ট্যান্স ব্যবহার করছি যা সব প্ল্যাটফর্ম সাপোর্ট করে
-    # এটি FB, IG, YouTube, Twitter সবকিছুর জন্য কাজ করে
-    api_url = "https://cobalt-api.v0l.io/" 
+    # আমরা বিভিন্ন Cobalt Instance ট্রাই করবো যদি একটি ফেইল করে
+    api_instances = [
+        "https://api.cobalt.tools/",
+        "https://cobalt-api.v0l.io/"
+    ]
     
     headers = {
         "Accept": "application/json",
-        "Content-Type": "application/json"
+        "Content-Type": "application/json",
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
     }
     
-    # এপিআই পেলোড (ভিডিও সেটিংস)
     payload = {
         "url": url,
         "videoQuality": "720",
-        "audioFormat": "mp3",
         "filenameStyle": "basic",
         "downloadMode": "video"
     }
 
-    try:
-        async with httpx.AsyncClient(timeout=30.0, follow_redirects=True) as client:
-            # POST রিকোয়েস্ট পাঠানো
-            response = await client.post(api_url, json=payload, headers=headers)
-            
-            if response.status_code != 200:
-                logger.error(f"API returned status {response.status_code}: {response.text}")
-                return None
+    for api_url in api_instances:
+        try:
+            async with httpx.AsyncClient(timeout=30.0, follow_redirects=True) as client:
+                response = await client.post(api_url, json=payload, headers=headers)
                 
-            data = response.json()
-            
-            # Cobalt API এর রেসপন্স হ্যান্ডেল করা
-            # এটি সরাসরি ভিডিও লিঙ্ক (url) অথবা মাল্টিপল অপশন (picker) দেয়
-            if data.get("status") in ["stream", "redirect", "picker"]:
-                video_url = data.get("url")
+                if response.status_code != 200:
+                    logger.error(f"API {api_url} error: {response.status_code}")
+                    continue
                 
-                # যদি ইউটিউব বা ফেসবুকের ক্ষেত্রে ভিডিও লিঙ্ক সরাসরি না পাওয়া যায়
-                if not video_url and data.get("picker"):
-                    video_url = data["picker"][0].get("url")
+                data = response.json()
+                status = data.get("status")
 
-                if video_url:
-                    return {
-                        "url": video_url,
-                        "title": "Downloaded Video",
-                    }
-            elif data.get("status") == "error":
-                logger.warning(f"Cobalt Error: {data.get('text')}")
+                # Cobalt API বিভিন্ন ফরম্যাটে লিঙ্ক দেয়
+                if status in ["stream", "redirect", "video"]:
+                    return {"url": data.get("url"), "title": "Downloaded Video"}
                 
-    except Exception as e:
-        logger.error(f"Downloader Error: {e}")
-    
+                elif status == "picker":
+                    # যদি মাল্টিপল কোয়ালিটি থাকে, তবে প্রথমটি নেওয়া
+                    return {"url": data["picker"][0].get("url"), "title": "Downloaded Video"}
+                
+                elif status == "error":
+                    logger.warning(f"Cobalt Error from {api_url}: {data.get('text')}")
+                    continue
+
+        except Exception as e:
+            logger.error(f"Request failed for {api_url}: {e}")
+            continue
+            
     return None
