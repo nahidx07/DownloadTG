@@ -1,23 +1,22 @@
 import firebase_admin
 from firebase_admin import credentials, firestore
-import json
 import logging
 from core.config import FIREBASE_CREDS
 
 logger = logging.getLogger(__name__)
 
-# Firebase Initialize
+# Firebase Initialize (একবারই হবে)
 try:
     if not firebase_admin._apps:
-        # সরাসরি ডিকশনারি থেকে ক্রেডেনশিয়াল নেওয়া
         cred = credentials.Certificate(FIREBASE_CREDS)
         firebase_admin.initialize_app(cred)
     db = firestore.client()
-    logger.info("✅ Firebase Connected Successfully!")
+    print("✅ Firebase Connected Successfully!")
 except Exception as e:
-    logger.error(f"❌ Firebase Init Error: {e}")
+    print(f"❌ Firebase Init Error: {e}")
 
 async def save_user(user):
+    """ইউজার ডাটা সেভ করার ফাংশন"""
     try:
         user_ref = db.collection("users").document(str(user.id))
         doc = user_ref.get()
@@ -26,12 +25,19 @@ async def save_user(user):
                 "user_id": user.id,
                 "username": user.username if user.username else "N/A",
                 "first_name": user.first_name,
-                "join_date": firestore.SERVER_TIMESTAMP # অটোমেটিক সার্ভার টাইম
+                "join_date": firestore.SERVER_TIMESTAMP
             })
-            logger.info(f"👤 New User Saved: {user.id}")
-        else:
-            logger.info(f"✅ User {user.id} already exists.")
+            logger.info(f"New user saved: {user.id}")
     except Exception as e:
-        logger.error(f"❌ Firestore Save Error: {e}")
-        # এখানে রেইজ করা ভালো যাতে index.py বুঝতে পারে
-        raise e
+        logger.error(f"Firestore Save Error: {e}")
+
+async def get_all_users():
+    """সব ইউজারের আইডি লিস্ট রিটার্ন করার ফাংশন (ব্রডকাস্টের জন্য)"""
+    try:
+        users_ref = db.collection("users").stream()
+        # সব ডকুমেন্ট থেকে শুধু আইডিগুলো নিয়ে একটি লিস্ট তৈরি করা
+        user_ids = [doc.id for doc in users_ref]
+        return user_ids
+    except Exception as e:
+        logger.error(f"Firestore Fetch Error: {e}")
+        return []
