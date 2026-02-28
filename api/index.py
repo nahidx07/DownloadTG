@@ -21,7 +21,7 @@ bot = Bot(token=BOT_TOKEN)
 dp = Dispatcher()
 dp.message.middleware(AntiSpamMiddleware())
 
-# --- হ্যান্ডলারসমূহ ---
+# --- টেলিগ্রাম হ্যান্ডলারসমূহ ---
 
 @dp.message(Command("start"))
 async def cmd_start(message: types.Message):
@@ -45,6 +45,7 @@ async def handle_video(message: types.Message):
 # --- মূল ফাংশন যা আপডেট প্রসেস করবে ---
 
 async def main_process(update_data):
+    # এই ফাংশনটি প্রতিটি রিকোয়েস্টের জন্য আলাদাভাবে রান হবে
     update = Update.model_validate(update_data, context={"bot": bot})
     await dp.feed_update(bot, update)
 
@@ -58,7 +59,8 @@ class handler(BaseHTTPRequestHandler):
         try:
             update_dict = json.loads(post_data.decode('utf-8'))
             
-            # loop error এড়াতে asyncio.run ব্যবহার করা হলো
+            # সমাধান: asyncio.run() ব্যবহার করা
+            # এটি একটি ফ্রেশ লুপ তৈরি করে, কাজ শেষ করে এবং লুপটি বন্ধ করে দেয়।
             asyncio.run(main_process(update_dict))
             
             self.send_response(200)
@@ -68,7 +70,8 @@ class handler(BaseHTTPRequestHandler):
             
         except Exception as e:
             logger.error(f"Webhook Execution Error: {e}")
-            self.send_response(200) # টেলিগ্রামকে সব সময় ২০০ পাঠাতে হয়
+            # টেলিগ্রামকে সব সময় ২০০ পাঠাতে হয় যাতে সে রিট্রাই না করে
+            self.send_response(200) 
             self.end_headers()
 
     def do_GET(self):
