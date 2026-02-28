@@ -5,51 +5,51 @@ import logging
 logger = logging.getLogger(__name__)
 
 async def fetch_media(url: str):
-    # আমরা বিভিন্ন Cobalt Instance ট্রাই করবো যদি একটি ফেইল করে
-    api_instances = [
+    # ১. যদি লিঙ্কটি টিকটকের হয়, তবে TikWM (আগের সফল পদ্ধতি) ব্যবহার করবে
+    if "tiktok.com" in url:
+        tikwm_url = "https://www.tikwm.com/api/"
+        try:
+            async with httpx.AsyncClient(timeout=20.0) as client:
+                resp = await client.post(tikwm_url, data={"url": url})
+                data = resp.json()
+                if data.get("code") == 0:
+                    video = data["data"].get("play") or data["data"].get("hdplay")
+                    return {"url": f"https://www.tikwm.com{video}" if video.startswith("/") else video}
+        except Exception as e:
+            logger.error(f"TikTok Specific Error: {e}")
+
+    # ২. ফেসবুক, ইন্সটাগ্রাম বা ইউটিউবের জন্য Cobalt API ব্যবহার করবে
+    # আমি এখানে ৩টি ভিন্ন ভিন্ন এপিআই লিঙ্ক দিচ্ছি, একটি না হলে অন্যটি কাজ করবে
+    api_list = [
         "https://api.cobalt.tools/",
-        "https://cobalt-api.v0l.io/"
+        "https://cobalt-api.v0l.io/",
+        "https://cobalt.sh/"
     ]
-    
-    headers = {
-        "Accept": "application/json",
-        "Content-Type": "application/json",
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
-    }
     
     payload = {
         "url": url,
         "videoQuality": "720",
-        "filenameStyle": "basic",
-        "downloadMode": "video"
+        "filenameStyle": "basic"
+    }
+    
+    headers = {
+        "Accept": "application/json",
+        "Content-Type": "application/json"
     }
 
-    for api_url in api_instances:
+    for api in api_list:
         try:
-            async with httpx.AsyncClient(timeout=30.0, follow_redirects=True) as client:
-                response = await client.post(api_url, json=payload, headers=headers)
-                
-                if response.status_code != 200:
-                    logger.error(f"API {api_url} error: {response.status_code}")
-                    continue
-                
-                data = response.json()
-                status = data.get("status")
-
-                # Cobalt API বিভিন্ন ফরম্যাটে লিঙ্ক দেয়
-                if status in ["stream", "redirect", "video"]:
-                    return {"url": data.get("url"), "title": "Downloaded Video"}
-                
-                elif status == "picker":
-                    # যদি মাল্টিপল কোয়ালিটি থাকে, তবে প্রথমটি নেওয়া
-                    return {"url": data["picker"][0].get("url"), "title": "Downloaded Video"}
-                
-                elif status == "error":
-                    logger.warning(f"Cobalt Error from {api_url}: {data.get('text')}")
-                    continue
-
-        except Exception as e:
-            logger.error(f"Request failed for {api_url}: {e}")
-            continue
+            async with httpx.AsyncClient(timeout=15.0, follow_redirects=True) as client:
+                response = await client.post(api, json=payload, headers=headers)
+                if response.status_code == 200:
+                    res_data = response.json()
+                    status = res_data.get("status")
+                    
+                    if status in ["stream", "redirect", "video"]:
+                        return {"url": res_data.get("url")}
+                    elif status == "picker":
+                        return {"url": res_data["picker"][0].get("url")}
+        except:
+            continue # একটি এপিআই কাজ না করলে পরেরটি ট্রাই করবে
             
     return None
