@@ -4,50 +4,54 @@ import logging
 
 logger = logging.getLogger(__name__)
 
-async def fetch_media(url: str, retries=3):
-    # আমরা TikWM এর গ্লোবাল এপিআই ব্যবহার করছি
-    api_url = "https://www.tikwm.com/api/"
+async def fetch_media(url: str):
+    # আমরা Cobalt এর একটি পাবলিক ইনস্ট্যান্স ব্যবহার করছি যা সব প্ল্যাটফর্ম সাপোর্ট করে
+    # এটি FB, IG, YouTube, Twitter সবকিছুর জন্য কাজ করে
+    api_url = "https://cobalt-api.v0l.io/" 
     
-    # ইউজার এজেন্ট (এটি না থাকলে অনেক সময় এপিআই ব্লক করে দেয়)
     headers = {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36"
+        "Accept": "application/json",
+        "Content-Type": "application/json"
+    }
+    
+    # এপিআই পেলোড (ভিডিও সেটিংস)
+    payload = {
+        "url": url,
+        "videoQuality": "720",
+        "audioFormat": "mp3",
+        "filenameStyle": "basic",
+        "downloadMode": "video"
     }
 
-    for i in range(retries):
-        try:
-            async with httpx.AsyncClient(timeout=20.0, headers=headers) as client:
-                # টিকটকের জন্য সরাসরি এপিআই কল
-                response = await client.post(api_url, data={"url": url})
-                
-                # যদি এপিআই থেকে রেসপন্স না আসে
-                if response.status_code != 200:
-                    logger.error(f"API returned status {response.status_code}")
-                    continue
-
-                data = response.json()
-                
-                if data.get("code") == 0:
-                    res = data["data"]
-                    # ভিডিও লিঙ্ক খুঁজে বের করা
-                    video_url = res.get("play") or res.get("hdplay") or res.get("wmplay")
-                    
-                    if video_url:
-                        # যদি লিঙ্কটি পূর্ণাঙ্গ না হয় তবে ডোমেইন যোগ করা
-                        if video_url.startswith("/"):
-                            video_url = f"https://www.tikwm.com{video_url}"
-                            
-                        return {
-                            "url": video_url,
-                            "title": res.get("title", "Video"),
-                            "size": res.get("size", 0)
-                        }
-                else:
-                    logger.warning(f"API Error Message: {data.get('msg')}")
-
-        except Exception as e:
-            logger.error(f"Retry {i+1} failed: {e}")
-            if i == retries - 1:
-                return None
-            await asyncio.sleep(2) # ২ সেকেন্ড অপেক্ষা করে আবার ট্রাই করবে
+    try:
+        async with httpx.AsyncClient(timeout=30.0, follow_redirects=True) as client:
+            # POST রিকোয়েস্ট পাঠানো
+            response = await client.post(api_url, json=payload, headers=headers)
             
+            if response.status_code != 200:
+                logger.error(f"API returned status {response.status_code}: {response.text}")
+                return None
+                
+            data = response.json()
+            
+            # Cobalt API এর রেসপন্স হ্যান্ডেল করা
+            # এটি সরাসরি ভিডিও লিঙ্ক (url) অথবা মাল্টিপল অপশন (picker) দেয়
+            if data.get("status") in ["stream", "redirect", "picker"]:
+                video_url = data.get("url")
+                
+                # যদি ইউটিউব বা ফেসবুকের ক্ষেত্রে ভিডিও লিঙ্ক সরাসরি না পাওয়া যায়
+                if not video_url and data.get("picker"):
+                    video_url = data["picker"][0].get("url")
+
+                if video_url:
+                    return {
+                        "url": video_url,
+                        "title": "Downloaded Video",
+                    }
+            elif data.get("status") == "error":
+                logger.warning(f"Cobalt Error: {data.get('text')}")
+                
+    except Exception as e:
+        logger.error(f"Downloader Error: {e}")
+    
     return None
